@@ -20,25 +20,49 @@ from langgraph.prebuilt import create_react_agent
 # =====================================================================
 st.set_page_config(page_title="AI Agent 007", page_icon="🤖", layout="centered")
 st.title("🤖 Chatbot AI Agent (Bản Web)")
-st.markdown("💡 **Siêu năng lực:** Tra cứu mạng | Tính toán | File | 🧠 **Trí nhớ** | 📈 **Giá Crypto (MỚI)**")
+st.markdown("💡 **Siêu năng lực:** Tra cứu mạng | Tính toán | File | 🧠 **Trí nhớ** | 📈 **Giá Crypto**")
 st.divider()
 
+# --- CƠ CHẾ SỬA LỖI PYDANTIC VALIDATION ERROR ---
 load_dotenv()
-api_key = os.getenv("GOOGLE_API_KEY", "").strip().strip("'").strip('"')
+api_key = os.getenv("GOOGLE_API_KEY", "")
+
+# Nếu code đang chạy trên Streamlit Cloud, tự động lấy Key từ st.secrets
+if not api_key and "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+
+api_key = api_key.strip().strip("'").strip('"')
+
+# Chặn đứng chương trình và báo lỗi trên Web thay vì sập Python Traceback
+if not api_key:
+    st.error("❌ **LỖI NGHIÊM TRỌNG: Streamlit Cloud chưa nhận được API Key của bạn!**")
+    st.info("👉 **CÁCH KHẮC PHỤC TRÊN STREAMLIT CLOUD:**")
+    st.markdown("1. Nhìn xuống góc dưới cùng bên phải của trang Web này, bấm vào chữ **`Manage app`**.")
+    st.markdown("2. Bấm vào biểu tượng dấu 3 chấm (`⋮`) -> Chọn **`Settings`**.")
+    st.markdown("3. Chọn mục **`Secrets`** ở menu bên trái.")
+    st.markdown("4. Copy và dán chính xác dòng lệnh sau vào ô trống, sau đó bấm **Save**:")
+    st.code('GOOGLE_API_KEY="DÁN_API_KEY_CỦA_BẠN_VÀO_ĐÂY (Thường bắt đầu bằng AIza... hoặc AQ...)"', language="toml")
+    st.stop() # Dừng chạy code tại đây để không gây lỗi Pydantic
+
 os.environ["GOOGLE_API_KEY"] = api_key
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash", 
-    temperature=0
-)
+# Khởi tạo bộ não AI (Truyền trực tiếp api_key vào)
+try:
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash", 
+        temperature=0,
+        api_key=api_key
+    )
+except Exception as e:
+    st.error(f"❌ Lỗi khởi tạo AI: {e}")
+    st.stop()
 
 # =====================================================================
 # PHẦN 2: KHO VŨ KHÍ THỰC TẾ (TOOLS) CHO AGENT
 # =====================================================================
-
 @tool
 def cong_cu_may_tinh(bieu_thuc: str) -> str:
-    """Hữu ích khi bạn cần thực hiện các phép tính toán học (Cộng, trừ, nhân, chia)."""
+    """Hữu ích khi bạn cần thực hiện các phép tính toán học."""
     try:
         time.sleep(1)
         return str(eval(bieu_thuc))
@@ -63,12 +87,8 @@ def cong_cu_tra_cuu_wiki(tu_khoa: str) -> str:
         with urllib.request.urlopen(req) as response:
             data = json.loads(response.read().decode('utf-8'))
             if data['query']['search']:
-                snippets = []
-                for item in data['query']['search'][:2]:
-                    snippet_clean = re.sub('<[^<]+>', '', item['snippet'])
-                    snippets.append(snippet_clean)
-                ket_qua_gop = " | ".join(snippets)
-                return f"Thông tin tìm được: {ket_qua_gop}"
+                snippets = [re.sub('<[^<]+>', '', item['snippet']) for item in data['query']['search'][:2]]
+                return f"Thông tin tìm được: {' | '.join(snippets)}"
             return "Không tìm thấy thông tin trên mạng."
     except Exception as e:
         return f"Lỗi tra cứu: {e}"
@@ -93,35 +113,24 @@ def cong_cu_doc_file(ten_file: str) -> str:
             return f"Lỗi: Không tìm thấy file '{ten_file}' trên máy tính."
         with open(ten_file, 'r', encoding='utf-8') as f:
             noi_dung = f.read()
-        if len(noi_dung) > 10000:
-            noi_dung = noi_dung[:10000] + "\n\n... [Cắt bớt do quá dài] ..."
-        return f"Nội dung file '{ten_file}':\n{noi_dung}"
+        return f"Nội dung file '{ten_file}':\n{noi_dung[:10000]}"
     except Exception as e:
         return f"Lỗi khi đọc file: {e}"
 
-# --- CÔNG CỤ MỚI: TÍCH HỢP API THẾ GIỚI THỰC ---
 @tool
 def cong_cu_gia_crypto(ten_coin: str) -> str:
-    """
-    Dùng để tra cứu giá tiền điện tử (Bitcoin, Ethereum...) theo thời gian thực từ sàn Binance.
-    Đầu vào là mã coin viết tắt (Ví dụ: 'BTC', 'ETH', 'BNB', 'SOL').
-    """
+    """Tra cứu giá tiền điện tử theo thời gian thực từ sàn Binance."""
     try:
         time.sleep(1)
-        # Sàn Binance yêu cầu mã cặp giao dịch, vd: BTCUSDT
         symbol = ten_coin.upper() + "USDT"
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as response:
             data = json.loads(response.read().decode('utf-8'))
-            gia_usd = float(data['price'])
-            return f"Giá hiện tại của {ten_coin.upper()} đang là {gia_usd:,.2f} USD."
-    except urllib.error.HTTPError as e:
-        return f"Lỗi: Không tìm thấy mã coin '{ten_coin}' hoặc mã không hợp lệ."
+            return f"Giá hiện tại của {ten_coin.upper()} đang là {float(data['price']):,.2f} USD."
     except Exception as e:
         return f"Lỗi không thể lấy giá crypto: {e}"
 
-# Đăng ký vũ khí mới
 danh_sach_tools = [cong_cu_may_tinh, cong_cu_thoi_gian, cong_cu_tra_cuu_wiki, cong_cu_luu_file, cong_cu_doc_file, cong_cu_gia_crypto]
 
 # =====================================================================
@@ -130,53 +139,36 @@ danh_sach_tools = [cong_cu_may_tinh, cong_cu_thoi_gian, cong_cu_tra_cuu_wiki, co
 agent = create_react_agent(llm, tools=danh_sach_tools)
 
 # =====================================================================
-# PHẦN 4: QUẢN LÝ LỊCH SỬ (TRÍ NHỚ DÀI HẠN) VÀ GIAO DIỆN CHAT
+# PHẦN 4: GIAO DIỆN CHAT STREAMLIT
 # =====================================================================
-chi_thi_he_thong = """
-Bạn là một trợ lý ảo siêu việt kiêm thư ký cá nhân tên là Agent-007.
-Quy tắc:
-1. Khi TẠO/LƯU file, dùng 'cong_cu_luu_file'.
-2. Khi ĐỌC/XEM nội dung file, dùng 'cong_cu_doc_file'.
-3. Khi tìm thông tin kiến thức chung, dùng 'cong_cu_tra_cuu_wiki'.
-4. Khi hỏi giá tiền điện tử (Bitcoin, ETH...), BẮT BUỘC dùng 'cong_cu_gia_crypto'.
-5. Luôn trả lời lịch sự và trình bày đẹp mắt (dùng Markdown).
-"""
-
+chi_thi_he_thong = "Bạn là trợ lý ảo siêu việt. Dùng công cụ khi cần. Trả lời lịch sự bằng Markdown."
 FILE_TRI_NHO = "chat_history.json"
 
 def luu_tri_nho(messages):
     try:
-        danh_sach_dict = messages_to_dict(messages)
         with open(FILE_TRI_NHO, "w", encoding="utf-8") as f:
-            json.dump(danh_sach_dict, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.error(f"Lỗi khi lưu trí nhớ: {e}")
+            json.dump(messages_to_dict(messages), f, ensure_ascii=False, indent=2)
+    except:
+        pass
 
 def tai_tri_nho():
     if os.path.exists(FILE_TRI_NHO):
         try:
             with open(FILE_TRI_NHO, "r", encoding="utf-8") as f:
-                danh_sach_dict = json.load(f)
-            return messages_from_dict(danh_sach_dict)
-        except Exception:
-            return None
+                return messages_from_dict(json.load(f))
+        except:
+            pass
     return None
 
 with st.sidebar:
     st.header("⚙️ Cài đặt Agent")
-    st.markdown("Hệ thống tự động lưu trữ cuộc trò chuyện của bạn vào máy tính.")
     if st.button("🗑️ Xóa sạch trí nhớ", use_container_width=True):
         st.session_state.lich_su_chat = [SystemMessage(content=chi_thi_he_thong)]
         luu_tri_nho(st.session_state.lich_su_chat)
-        st.success("Đã tẩy não Agent thành công!")
         st.rerun()
 
 if "lich_su_chat" not in st.session_state:
-    tri_nho_cu = tai_tri_nho()
-    if tri_nho_cu:
-        st.session_state.lich_su_chat = tri_nho_cu
-    else:
-        st.session_state.lich_su_chat = [SystemMessage(content=chi_thi_he_thong)]
+    st.session_state.lich_su_chat = tai_tri_nho() or [SystemMessage(content=chi_thi_he_thong)]
 
 for msg in st.session_state.lich_su_chat:
     if isinstance(msg, HumanMessage):
@@ -184,41 +176,27 @@ for msg in st.session_state.lich_su_chat:
             st.markdown(msg.content)
     elif isinstance(msg, AIMessage) and msg.content:
         with st.chat_message("assistant"):
-            if isinstance(msg.content, list):
-                clean_text = "\n".join([item["text"] for item in msg.content if isinstance(item, dict) and "text" in item])
-                st.markdown(clean_text)
-            else:
-                st.markdown(msg.content)
+            text = "\n".join([i["text"] for i in msg.content if isinstance(i, dict) and "text" in i]) if isinstance(msg.content, list) else msg.content
+            st.markdown(text)
 
-if cau_hoi := st.chat_input("Nhập lệnh hoặc câu hỏi của bạn vào đây..."):
-    with st.chat_message("user"):
-        st.markdown(cau_hoi)
-        
+if cau_hoi := st.chat_input("Nhập lệnh hoặc câu hỏi..."):
+    with st.chat_message("user"): st.markdown(cau_hoi)
     st.session_state.lich_su_chat.append(HumanMessage(content=cau_hoi))
     luu_tri_nho(st.session_state.lich_su_chat)
     
     with st.chat_message("assistant"):
-        with st.spinner("Agent đang làm việc (tra cứu, đọc/ghi file, tính toán)..."):
+        with st.spinner("Đang xử lý..."):
             try:
                 ket_qua = agent.invoke({"messages": st.session_state.lich_su_chat})
                 st.session_state.lich_su_chat = ket_qua["messages"]
-                
                 luu_tri_nho(st.session_state.lich_su_chat)
                 
                 final_content = st.session_state.lich_su_chat[-1].content
-                if isinstance(final_content, list):
-                    clean_text = "\n".join([item["text"] for item in final_content if isinstance(item, dict) and "text" in item])
-                    st.markdown(clean_text)
-                else:
-                    st.markdown(final_content)
-                    
+                st.markdown("\n".join([i["text"] for i in final_content if isinstance(i, dict)]) if isinstance(final_content, list) else final_content)
             except Exception as e:
                 error_msg = str(e)
                 if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                    st.error("⏳ **CẢNH BÁO:** Bạn đã chạm giới hạn API. Vui lòng đợi khoảng 1 phút rồi thử lại!")
-                    st.session_state.lich_su_chat.pop()
-                    luu_tri_nho(st.session_state.lich_su_chat)
+                    st.error("⏳ **CẢNH BÁO:** Chạm giới hạn API. Vui lòng đợi 1 phút!")
                 else:
                     st.error(f"❌ **LỖI:** {e}")
-                    st.session_state.lich_su_chat.pop()
-                    luu_tri_nho(st.session_state.lich_su_chat)
+                st.session_state.lich_su_chat.pop()
