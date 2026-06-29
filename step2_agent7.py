@@ -41,7 +41,7 @@ if not api_key:
     st.markdown("2. Bấm vào biểu tượng dấu 3 chấm (`⋮`) -> Chọn **`Settings`**.")
     st.markdown("3. Chọn mục **`Secrets`** ở menu bên trái.")
     st.markdown("4. Copy và dán chính xác dòng lệnh sau vào ô trống, sau đó bấm **Save**:")
-    st.code('GOOGLE_API_KEY="AIzaSy... (dán API Key thực sự của bạn vào đây)"', language="toml")
+    st.code('GOOGLE_API_KEY="DÁN_API_KEY_CỦA_BẠN_VÀO_ĐÂY (Thường bắt đầu bằng AIza... hoặc AQ...)"', language="toml")
     st.stop() # Dừng chạy code tại đây để không gây lỗi Pydantic
 
 os.environ["GOOGLE_API_KEY"] = api_key
