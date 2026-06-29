@@ -1,0 +1,10 @@
+streamlit
+python-dotenv
+langchain-google-genai
+langgraph
+langchain-core
+pydantic
+pypdf
+python-docx
+pandas
+openpyxl

@@ -6,6 +6,9 @@ import urllib.request
 import urllib.parse
 import json
 import re
+import pandas as pd
+import docx
+from pypdf import PdfReader
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -19,7 +22,7 @@ from langgraph.prebuilt import create_react_agent
 # PHẦN 1: THIẾT LẬP MÔI TRƯỜNG & GIAO DIỆN WEB
 # =====================================================================
 st.set_page_config(page_title="AI Agent 007", page_icon="🤖", layout="centered")
-st.title("🤖 Chatbot AI Agent (Bản Web)")
+st.title("🤖 Chatbot AI Agent (007)")
 st.markdown("💡 **Siêu năng lực:** Nhìn ảnh (MỚI) | Tra cứu mạng | Tính toán | File | 🧠 **Trí nhớ**")
 st.divider()
 
@@ -97,16 +100,45 @@ def cong_cu_luu_file(ten_file: str, noi_dung: str) -> str:
 
 @tool
 def cong_cu_doc_file(ten_file: str) -> str:
-    """Dùng để đọc nội dung từ file có sẵn trên máy tính."""
+    """Dùng để đọc nội dung từ file trên máy tính (hỗ trợ .txt, .csv, .pdf, .docx, .xlsx)."""
     try:
         time.sleep(1)
         if not os.path.exists(ten_file):
             return f"Lỗi: Không tìm thấy file '{ten_file}' trên máy tính."
-        with open(ten_file, 'r', encoding='utf-8') as f:
-            noi_dung = f.read()
-        return f"Nội dung file '{ten_file}':\n{noi_dung[:10000]}"
+        
+        ext = ten_file.lower().split('.')[-1]
+        noi_dung = ""
+        
+        # Xử lý tùy theo định dạng file
+        if ext in ['txt', 'md']:
+            with open(ten_file, 'r', encoding='utf-8') as f:
+                noi_dung = f.read()
+        elif ext == 'csv':
+            df = pd.read_csv(ten_file)
+            noi_dung = df.to_string()
+        elif ext == 'xlsx':
+            df = pd.read_excel(ten_file)
+            noi_dung = df.to_string()
+        elif ext == 'pdf':
+            reader = PdfReader(ten_file)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    noi_dung += text + "\n"
+        elif ext == 'docx':
+            doc = docx.Document(ten_file)
+            for para in doc.paragraphs:
+                noi_dung += para.text + "\n"
+        else:
+            return f"Lỗi: Định dạng file '.{ext}' chưa được hỗ trợ."
+        
+        # Giới hạn nội dung để không làm tràn bộ nhớ AI (Context Window)
+        if len(noi_dung) > 15000:
+            noi_dung = noi_dung[:15000] + "\n\n... [Nội dung đã được cắt bớt do tài liệu quá dài] ..."
+            
+        return f"Nội dung file '{ten_file}':\n{noi_dung}"
     except Exception as e:
-        return f"Lỗi khi đọc file: {e}"
+        return f"Lỗi khi đọc file '{ten_file}': {e}"
 
 @tool
 def cong_cu_gia_crypto(ten_coin: str) -> str:
@@ -159,6 +191,16 @@ with st.sidebar:
     file_anh_tai_len = st.file_uploader("📸 Tải ảnh lên để AI phân tích", type=["jpg", "jpeg", "png"])
     if file_anh_tai_len:
         st.image(file_anh_tai_len, caption="Ảnh bạn vừa tải lên", use_container_width=True)
+        
+    st.divider()
+    
+    # Nâng cấp Hướng 2: Tải tài liệu lên (PDF, DOCX, XLSX...)
+    file_tai_lieu = st.file_uploader("📂 Tải tài liệu lên để AI đọc (PDF, DOCX, XLSX, CSV, TXT)", type=["pdf", "docx", "xlsx", "csv", "txt"])
+    if file_tai_lieu:
+        # Tự động lưu file vào máy chủ để công cụ cong_cu_doc_file có thể tìm thấy và mở ra đọc
+        with open(file_tai_lieu.name, "wb") as f:
+            f.write(file_tai_lieu.getbuffer())
+        st.success(f"✅ Đã lưu: `{file_tai_lieu.name}`. Bạn hãy ra lệnh cho AI đọc file này nhé!")
         
     st.divider()
     if st.button("🗑️ Xóa sạch trí nhớ", use_container_width=True):
